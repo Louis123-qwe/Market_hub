@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Market Hub — POS</title>
+
+<!-- Fonts & libraries -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- QR generator -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+  :root{
+    --accent:#008b8b;
+    --accent-2:#006400;
+    --muted:#e6e6e6;
+    --card-bg: rgba(20,20,20,0.9);
+  }
+  *{box-sizing:border-box;font-family:'Poppins',sans-serif}
+  html,body{height:100%;margin:0;background:#0d0d0d;color:var(--muted);transition:background .5s,color .5s}
+  header{display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:linear-gradient(90deg,#0e1520,#111827);box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  #brand{display:flex;align-items:center;gap:.75rem;font-weight:700;font-size:1.25rem}
+  .controls{display:flex;gap:.5rem;align-items:center}
+  .btn{background:linear-gradient(90deg,var(--accent-2),#002b36);color:#fff;border:none;padding:.5rem .8rem;border-radius:8px;cursor:pointer;font-weight:600}
+  .icon-btn{background:transparent;border:2px solid rgba(255,255,255,.06);padding:.4rem .6rem;border-radius:8px;color:var(--muted);cursor:pointer}
+  .hamburger{font-size:1.25rem;cursor:pointer;padding:.35rem .6rem;border-radius:8px}
+  .menu{position:absolute;right:1rem;top:60px;background:var(--card-bg);border:2px solid var(--accent);padding:.5rem;border-radius:10px;display:none;min-width:220px;z-index:40;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  .menu.show{display:flex;flex-direction:column;gap:.25rem}
+  .menu button{background:transparent;color:var(--muted);border:none;text-align:left;padding:.6rem;border-radius:6px;cursor:pointer}
+  .menu button:hover{background:rgba(0,139,139,.08)}
+
+  main{display:grid;grid-template-columns:1fr 420px;gap:1rem;padding:1rem;align-items:start}
+  .panel{background:var(--card-bg);border:2px solid var(--accent);border-radius:12px;padding:1rem;box-shadow:0 6px 18px rgba(0,0,0,.6)}
+  .panel h3{margin:0 0 .5rem 0;color:var(--muted)}
+  .form-row{display:flex;gap:.5rem}
+  input,select,textarea{background:transparent;border:1px solid rgba(255,255,255,.06);color:var(--muted);padding:.6rem;border-radius:8px;width:100%}
+  small.hint{color:rgba(255,255,255,.6);display:block;margin-top:.25rem}
+
+  table{width:100%;border-collapse:collapse;margin-top:.75rem}
+  th,td{padding:.6rem;border:3px solid rgba(0,139,139,.18);text-align:center}
+  th{background:rgba(0,0,0,.6)}
+  tr:hover td{background:rgba(0,139,139,.04)}
+
+  /* cart styles */
+  #cartList{max-height:280px;overflow:auto;margin-top:.5rem}
+  .cart-row{display:flex;justify-content:space-between;gap:.5rem;padding:.4rem;border-bottom:1px dashed rgba(255,255,255,.03);align-items:center}
+  .cart-row .left{flex:1;text-align:left}
+  .muted{color:rgba(255,255,255,.7);font-size:.9rem}
+
+  /* receipt preview (POS ticket) */
+  #receiptPreview{position:fixed;right:20px;bottom:20px;width:320px;background:#0b0b0b;color:#dfeff0;border:2px solid rgba(0,139,139,.35);padding:12px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.7);display:none;z-index:60}
+  #receiptPreview .ticket{font-family:monospace;background:transparent}
+  #receiptPreview h4{margin:0 0 .25rem 0;text-align:center}
+  #receiptPreview .line{height:1px;background:rgba(255,255,255,.06);margin:.5rem 0}
+
+  /* tax lines in pos panel */
+  .money-line{display:flex;justify-content:space-between;margin-top:.4rem}
+
+  /* suggestions box for posItem autocomplete */
+  .suggestions {position:absolute;left:0;top:100%;background:var(--card-bg);border:1px solid rgba(0,139,139,.18);width:100%;max-height:180px;overflow:auto;border-radius:8px;margin-top:6px;z-index:50}
+  .suggestions div{padding:.5rem;cursor:pointer}
+  .suggestions div:hover{background:rgba(0,139,139,.04)}
+
+  /* charts full width panel (below inventory) */
+  #chartsPanel{grid-column:1/-1;margin:0 1rem 1rem 1rem;display:none}
+
+  /* responsive */
+  @media (max-width:980px){
+    main{grid-template-columns:1fr; padding:0.6rem}
+    #receiptPreview{right:10px;left:10px;width:auto}
+  }
+
+  /* themes */
+  body.light{background:#f7f7f9;color:#111}
+  body.light .panel{background:#fff;border-color:#cfd8dc;color:#111}
+  body.dark{background:#0c0d10;color:var(--muted)}
+  body.neon{background:linear-gradient(135deg,#0f1420,#081219,#071017);color:var(--muted)}
+
+  /* ===== Additions (match your style) ===== */
+  /* Balance badge in header */
+  #balanceBadge{display:flex;align-items:center;gap:.5rem;background:rgba(0,139,139,.08);border:1px solid rgba(0,139,139,.35);padding:.35rem .6rem;border-radius:10px;font-weight:600}
+  #balanceBadge small{opacity:.8}
+
+  /* Colorful modal/alerts */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:90}
+  .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--card-bg);border:2px solid var(--accent);border-radius:12px;min-width:300px;max-width:90vw;padding:1rem;display:none;z-index:100;box-shadow:0 20px 40px rgba(0,0,0,.7)}
+  .modal h4{margin:.25rem 0 .5rem 0}
+  .modal .modal-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem}
+  .tag{display:inline-block;padding:.15rem .5rem;border-radius:999px;border:1px solid rgba(0,139,139,.35);background:rgba(0,139,139,.08);font-size:.75rem}
+
+  /* Toasts */
+  #toast{position:fixed;right:16px;top:16px;display:none;z-index:120}
+  .toast{background:linear-gradient(90deg,#0b3a3a,#062a2a);border:1px solid rgba(0,139,139,.35);color:#dff; padding:.6rem .8rem;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.6)}
+</style>
+</head>
+<body>
+
+<header>
+  <div id="brand">
+    <span id="storeTitle">Market Hub</span>
+    <small class="muted tag" id="modeLabel"></small>
+    <!-- Balance badge -->
+    <div id="balanceBadge" title="Amount at hand">
+      <small>Total:</small> <span id="balanceAmount">₦0</span>
+      <button id="editBalanceBtn" class="icon-btn" title="Update balance">✎</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="themeBtn" class="btn">Theme</button>
+    <div style="position:relative">
+      <div class="hamburger" id="hamburgerBtn">☰</div>
+      <div class="menu" id="hamburgerMenu" aria-hidden="true">
+        <button id="resetSalesBtn">Reset Sales</button>
+        <button id="todaySalesBtn">Today's Sales Total</button>
+        <button id="detailedSalesBtn">Detailed Sales Report</button>
+        <button id="settingsBtn">Change Password, Store, Tax</button>
+        <button id="chartsBtn">Charts & Graphs</button>
+        <hr style="border:none;height:1px;background:rgba(255,255,255,.04);margin:.25rem 0">
+        <button id="resetSystemBtn" style="color:#ffb347">Reset System</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Inventory & Add -->
+  <section class="panel" id="inventoryPanel">
+    <h3>Inventory Management</h3>
+
+    <div class="form-row">
+      <input id="addItemName" placeholder="Item name">
+      <input id="addItemPrice" placeholder="Price (₦)" type="number" min="0" step="0.01">
+      <input id="addItemQty" placeholder="Qty" type="number" min="1" step="1">
+      <button id="addItemBtn" class="btn" style="min-width:120px">Add</button>
+    </div>
+    <small class="hint">If item exists, quantity will be incremented.</small>
+
+    <table id="inventoryTable" aria-label="Inventory">
+      <thead><tr><th>Item</th><th>Price (₦)</th><th>Qty</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- POS / Cart -->
+  <aside class="panel" id="posPanel">
+    <h3>SALES</h3>
+
+    <input id="posCustomer" placeholder="Customer name (optional)">
+    <div style="margin-top:.5rem" class="form-row" style="position:relative">
+      <div style="position:relative;flex:1">
+        <input id="posItem" placeholder="Item name" autocomplete="off">
+        <div id="posSuggestions" class="suggestions" style="display:none"></div>
+      </div>
+      <input id="posQty" placeholder="Qty" type="number" min="1" step="1" style="max-width:120px" value="1">
+    </div>
+    <div style="display:flex;gap:.5rem;margin-top:.5rem">
+      <button id="addToCartBtn" class="btn" style="flex:1">Add to Cart</button>
+      <button id="clearCartBtn" class="icon-btn" title="Clear cart">✖</button>
+    </div>
+
+    <div id="cartList" style="margin-top:.6rem"></div>
+
+    <div style="margin-top:.75rem">
+      <div class="money-line"><div class="muted">Subtotal</div><div id="cartSubtotal">₦0</div></div>
+      <div class="money-line" id="cartTaxLine" style="display:none"><div class="muted">Tax (<span id="cartTaxPercent"></span>)</div><div id="cartTax">₦0</div></div>
+      <div class="money-line"><div class="muted">Total Due</div><div id="cartTotalDue">₦0</div></div>
+      <div class="money-line" style="margin-top:.6rem"><div class="muted">Amount Paid</div><input id="amountPaid" type="number" placeholder="₦" style="width:150px"></div>
+      <div class="money-line"><div class="muted">Change</div><div id="changeDue">₦0</div></div>
+
+      <div style="display:flex;gap:.5rem;margin-top:.8rem">
+        <button id="checkoutBtn" class="btn" style="flex:1">Checkout</button>
+        <button id="previewPdfBtn" class="icon-btn" title="Preview PDF">PDF</button>
+        <button id="printBtn" class="icon-btn" title="Print Receipt">🖨</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Charts (full width) -->
+  <section id="chartsPanel" class="panel" style="display:none;grid-column:1/-1">
+    <h3>Charts & Analytics</h3>
+    <canvas id="inventoryChart" style="max-height:300px"></canvas>
+    <canvas id="salesChart" style="max-height:300px;margin-top:16px"></canvas>
+  </section>
+</main>
+
+<!-- Receipt preview (ticket) -->
+<div id="receiptPreview" role="dialog" aria-hidden="true">
+  <div class="ticket" id="ticketInner">
+    <!-- content injected -->
+  </div>
+  <div style="display:flex;gap:.5rem;margin-top:.6rem;justify-content:center">
+    <button id="downloadReceiptBtn" class="btn">Download PDF</button>
+    <button id="reprintBtn" class="btn">Print</button>
+    <button id="closeReceiptPreview" class="icon-btn">Close</button>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
+<!-- Custom modal + backdrop (used by appModal) -->
+<div class="modal-backdrop" id="backdrop"></div>
+<div class="modal" id="appModal" role="dialog" aria-hidden="true">
+  <h4 id="modalTitle">Notice</h4>
+  <div id="modalBody" class="muted"></div>
+  <div id="modalInputs" style="margin-top:.6rem"></div>
+  <div class="modal-actions" style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem">
+    <button id="modalCancel" class="icon-btn">Cancel</button>
+    <button id="modalOk" class="btn">OK</button>
+  </div>
+</div>
+
+<!-- Login overlay (kept in DOM but hidden on load) -->
+<div id="authOverlay" style="display:none">
+  <div id="authCard">
+    <h3 style="margin:.25rem 0 8px 0">🔒 Secure Login</h3>
+    <div class="muted" style="margin-bottom:.6rem">Enter password to access POS</div>
+    <input id="loginPassword" type="password" placeholder="Password" />
+    <div class="modal-actions" style="margin-top:.8rem">
+      <button id="loginBtn" class="btn" style="width:100%">Login</button>
+    </div>
+    <small class="hint">Default: <strong>markethub</strong></small>
+  </div>
+</div>
+
+<script>
+/* -----------------------
+   LocalStorage keys & defaults
+   ----------------------- */
+const LS = {
+  inventory: 'mh_inventory_v1',
+  sales: 'mh_sales_v1',
+  theme: 'mh_theme_v1',
+  storeName: 'mh_storeName_v1',
+  password: 'mh_password_v1',
+  cash: 'mh_cashAtHand_v1',
+  tax: 'mh_taxRate_v1',
+  applyTax: 'mh_applyTax_v1'
+};
+
+/* -----------------------
+   App state
+   ----------------------- */
+let inventory = JSON.parse(localStorage.getItem(LS.inventory) || '[]');
+// if empty, seed with a few items so autocomplete/test works
+if(!inventory || inventory.length === 0){
+  inventory = [
+    {name:'item 1', price:500, qty:50},
+    {name:'item 2', price:300, qty:40},
+    {name:'item 3', price:1200, qty:20},
+    {name:'item 4', price:150, qty:60}
+  ];
+  localStorage.setItem(LS.inventory, JSON.stringify(inventory));
+}
+let sales = JSON.parse(localStorage.getItem(LS.sales) || '[]');
+let cart = [];
+let theme = localStorage.getItem(LS.theme) || 'neon';
+let storeName = localStorage.getItem(LS.storeName) || 'Market Hub';
+let password = localStorage.getItem(LS.password) || 'markethub';
+let cashAtHand = Number(localStorage.getItem(LS.cash) || 0);
+let taxRate = Number(localStorage.getItem(LS.tax) || 0.075); // decimal (7.5% default)
+let applyTax = JSON.parse(localStorage.getItem(LS.applyTax) || 'true');
+
+/* -----------------------
+   DOM shortcuts
+   ----------------------- */
+const $ = id => document.getElementById(id);
+const inventoryTbody = document.querySelector('#inventoryTable tbody');
+const cartList = $('cartList');
+const subtotalEl = $('cartSubtotal');
+const changeDueEl = $('changeDue');
+const receiptPreview = $('receiptPreview');
+const ticketInner = $('ticketInner');
+const hamburgerMenu = $('hamburgerMenu');
+const hamburgerBtn = $('hamburgerBtn');
+const chartsPanel = $('chartsPanel');
+const balanceAmount = $('balanceAmount');
+const posItemInput = $('posItem');
+const posSuggestions = $('posSuggestions');
+const cartTaxLine = $('cartTaxLine');
+const cartTaxEl = $('cartTax');
+const cartTaxPercentEl = $('cartTaxPercent');
+const cartTotalDueEl = $('cartTotalDue');
+
+/* -----------------------
+   Init UI
+   ----------------------- */
+document.getElementById('storeTitle').innerText = storeName;
+document.body.classList.add(theme);
+updateModeLabel();
+renderBalance();
+
+// hide login overlay so app opens directly (keeps element in DOM)
+const authOverlayEl = $('authOverlay'); if (authOverlayEl) authOverlayEl.style.display = 'none';
+
+/* ========= Colorful alerts/prompts (appModal) ========= */
+/* This appModal always returns unnamed input under key "in_" so prompt-based code can use p.in_ */
+function toast(msg){
+  const wrap = $('toast');
+  wrap.innerHTML = `<div class="toast">${escapeHtml(msg)}</div>`;
+  wrap.style.display='block';
+  setTimeout(()=>{ wrap.style.display='none'; }, 2200);
+}
+
+function appModal({title='Notice', html='', inputs=[], okText='OK', cancelText='Cancel', showCancel=true}){
+  return new Promise(res=>{
+    $('modalTitle').innerText = title;
+    $('modalBody').innerHTML = html;
+    const inputsWrap = $('modalInputs');
+    inputsWrap.innerHTML = '';
+    const values = {};
+    inputs.forEach(inp=>{
+      const id = 'in_'+Math.random().toString(36).slice(2,7);
+      // allow checkbox type as well
+      inputsWrap.insertAdjacentHTML('beforeend', `
+        <div style="margin:.35rem 0">
+          ${inp.label?`<div class="muted" style="margin-bottom:.2rem">${escapeHtml(inp.label)}</div>`:''}
+          <input id="${id}" type="${inp.type||'text'}" placeholder="${inp.placeholder||''}" value="${inp.value??''}">
+        </div>
+      `);
+      // if checkbox requested and value truthy, set checked
+      setTimeout(()=>{
+        const el = document.getElementById(id);
+        if(el && inp.type === 'checkbox') el.checked = !!inp.value;
+      },0);
+      values[inp.name || 'in_'] = id;
+    });
+    const okBtn = $('modalOk');
+    const cancelBtn = $('modalCancel');
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+    cancelBtn.style.display = showCancel ? 'inline-flex' : 'none';
+    const show = ()=>{ $('backdrop').style.display='block'; $('appModal').style.display='block'; }
+    const hide = ()=>{ $('backdrop').style.display='none'; $('appModal').style.display='none'; }
+    show();
+    cancelBtn.onclick = ()=>{ hide(); res({ok:false}); };
+    okBtn.onclick = ()=>{
+      const out = {};
+      Object.keys(values).forEach(k=>{
+        const el = document.getElementById(values[k]);
+        if(el && el.type === 'checkbox') out[k] = el.checked;
+        else out[k] = el ? el.value : '';
+      });
+      hide(); res({ok:true, ...out});
+    };
+  });
+}
+function appAlert(msg){ return appModal({title:'✅ Info', html:`<div>${escapeHtml(msg)}</div>`, showCancel:false, okText:'OK'}); }
+function appConfirm(msg){ return appModal({title:'⚠️ Confirm', html:`<div>${escapeHtml(msg)}</div>`, okText:'Yes', cancelText:'No', showCancel:true}); }
+function appPrompt(label, {password=false, value=''}={}){ 
+  return appModal({title:'✍️ Input', inputs:[{label, type:password?'password':'text', value}], okText:'Submit', cancelText:'Cancel', showCancel:true}); 
+}
+
+/* -----------------------
+   Persistence & helpers
+   ----------------------- */
+function saveAll(){
+  localStorage.setItem(LS.inventory, JSON.stringify(inventory));
+  localStorage.setItem(LS.sales, JSON.stringify(sales));
+  localStorage.setItem(LS.theme, theme);
+  localStorage.setItem(LS.storeName, storeName);
+  localStorage.setItem(LS.password, password);
+  localStorage.setItem(LS.cash, String(cashAtHand));
+  localStorage.setItem(LS.tax, String(taxRate));
+  localStorage.setItem(LS.applyTax, JSON.stringify(applyTax));
+}
+function renderBalance(){ balanceAmount.textContent = '₦' + formatNumber(cashAtHand); }
+function formatNumber(n){ return Number(n).toLocaleString(undefined,{maximumFractionDigits:2}); }
+function escapeHtml(s){ return String(s).replace(/[&<>"'`]/g,(m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;' })[m]); }
+function updateModeLabel(){ $('modeLabel').innerText = theme.toUpperCase(); }
+
+/* -----------------------
+   Inventory functions
+   ----------------------- */
+function renderInventory(){
+  inventory = inventory.filter(i => i.qty > 0);
+  inventoryTbody.innerHTML = '';
+  inventory.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(it.name)}</td>
+                    <td>₦${formatNumber(it.price)}</td>
+                    <td>${it.qty}</td>
+                    <td>
+                      <button class="icon-btn" onclick="editInventory(${idx})">✎</button>
+                      <button class="icon-btn" onclick="removeInventory(${idx})">🗑</button>
+                    </td>`;
+    inventoryTbody.appendChild(tr);
+  });
+  saveAll();
+}
+$('addItemBtn').addEventListener('click', async ()=>{
+  const name = $('addItemName').value.trim();
+  const price = parseFloat($('addItemPrice').value);
+  const qty = parseInt($('addItemQty').value,10);
+  if(!name || !isFinite(price) || !Number.isInteger(qty) || qty <= 0){ await appAlert('Please fill name, price and qty'); return; }
+  const existing = inventory.find(i=>i.name.toLowerCase() === name.toLowerCase());
+  if(existing){ existing.qty += qty; existing.price = price; }
+  else inventory.push({name,price,qty});
+  $('addItemName').value=''; $('addItemPrice').value=''; $('addItemQty').value='';
+  renderInventory();
+  toast('Item added/updated');
+});
+async function editInventory(idx){
+  const it = inventory[idx];
+  const n1 = await appPrompt('Edit name:', {value: it.name});
+  if(!n1.ok) return;
+  const n2 = await appPrompt('Edit price (₦):', {value: it.price});
+  if(!n2.ok || !isFinite(parseFloat(n2.in_))) { await appAlert('Invalid price'); return; }
+  const n3 = await appPrompt('Edit qty:', {value: it.qty});
+  const qty = parseInt(n3.in_,10);
+  if(!n3.ok || !Number.isInteger(qty)){ await appAlert('Invalid qty'); return; }
+  inventory[idx] = {name:n1.in_, price:parseFloat(n2.in_), qty};
+  renderInventory(); 
+  toast('Inventory updated');
+}
+async function removeInventory(idx){
+  const c = await appConfirm('Remove item from inventory?');
+  if(!c.ok) return;
+  inventory.splice(idx,1);
+  renderInventory();
+  toast('Item removed');
+}
+
+/* -----------------------
+   Cart & Autocomplete
+   ----------------------- */
+function renderCart(){
+  cartList.innerHTML = '';
+  if(cart.length === 0){
+    cartList.innerHTML = '<div class="muted">Cart is empty</div>';
+    subtotalEl.innerText = '₦0';
+    cartTaxLine.style.display = 'none';
+    cartTotalDueEl.innerText = '₦0';
+    changeDueEl.innerText = '₦0';
+    return;
+  }
+  let subtotal = 0;
+  cart.forEach((c, idx) => {
+    subtotal += c.qty * c.price;
+    const div = document.createElement('div');
+    div.className = 'cart-row';
+    div.innerHTML = `<div class="left">${escapeHtml(c.name)} <span class="muted">x${c.qty}</span></div>
+                     <div>₦${formatNumber(c.qty*c.price)}</div>
+                     <div>
+                       <button class="icon-btn" onclick="incrementCart(${idx})">＋</button>
+                       <button class="icon-btn" onclick="decrementCart(${idx})">－</button>
+                       <button class="icon-btn" onclick="removeCart(${idx})">✖</button>
+                     </div>`;
+    cartList.appendChild(div);
+  });
+  subtotalEl.innerText = '₦' + formatNumber(subtotal);
+
+  if(applyTax){
+    const tax = +(subtotal * taxRate).toFixed(2);
+    cartTaxLine.style.display = 'flex';
+    cartTaxEl.innerText = '₦' + formatNumber(tax);
+    cartTaxPercentEl.innerText = (taxRate*100).toFixed(2) + '%';
+    cartTotalDueEl.innerText = '₦' + formatNumber(subtotal + tax);
+  } else {
+    cartTaxLine.style.display = 'none';
+    cartTotalDueEl.innerText = '₦' + formatNumber(subtotal);
+  }
+
+  const paid = Number($('amountPaid').value) || 0;
+  const totalDue = applyTax ? subtotal + +(subtotal * taxRate).toFixed(2) : subtotal;
+  changeDueEl.innerText = '₦' + formatNumber(Math.max(0, paid - totalDue));
+}
+
+function incrementCart(i){ cart[i].qty++; renderCart(); }
+function decrementCart(i){ cart[i].qty--; if(cart[i].qty<=0) cart.splice(i,1); renderCart(); }
+async function removeCart(i){ cart.splice(i,1); renderCart(); toast('Removed'); }
+$('clearCartBtn').addEventListener('click', async ()=>{ const c=await appConfirm('Clear cart?'); if(c.ok){ cart=[]; renderCart(); toast('Cart cleared'); }});
+$('amountPaid').addEventListener('input', renderCart);
+
+/* Autocomplete for posItem */
+posItemInput.addEventListener('input', ()=>{
+  const q = posItemInput.value.trim().toLowerCase();
+  posSuggestions.innerHTML = '';
+  if(!q){ posSuggestions.style.display = 'none'; return; }
+  const matches = inventory.filter(i=>i.name.toLowerCase().includes(q)).slice(0,12);
+  if(matches.length === 0){ posSuggestions.style.display = 'none'; return; }
+  matches.forEach(m=>{
+    const div = document.createElement('div');
+    div.textContent = m.name;
+    div.onclick = ()=>{
+      posItemInput.value = m.name;
+      posSuggestions.style.display = 'none';
+      $('posQty').value = 1;
+      $('posQty').focus();
+    };
+    posSuggestions.appendChild(div);
+  });
+  posSuggestions.style.display = 'block';
+});
+document.addEventListener('click', (e)=>{
+  if(!posItemInput.contains(e.target) && !posSuggestions.contains(e.target)) posSuggestions.style.display='none';
+});
+
+/* Add to cart (uses inventory price) */
+$('addToCartBtn').addEventListener('click', async ()=>{
+  const name = $('posItem').value.trim();
+  const qty = parseInt($('posQty').value,10);
+  if(!name || !Number.isInteger(qty) || qty <= 0){ await appAlert('Enter item name and qty'); return; }
+  const it = inventory.find(i => i.name.toLowerCase() === name.toLowerCase());
+  if(!it){ await appAlert('Item not found in inventory'); return; }
+  if(it.qty < qty){ await appAlert('Not enough stock'); return; }
+
+  const existing = cart.find(c => c.name.toLowerCase() === it.name.toLowerCase());
+  if(existing){ existing.qty += qty; }
+  else cart.push({name: it.name, qty, price: it.price});
+  $('posItem').value=''; $('posQty').value=1;
+  posSuggestions.style.display='none';
+  renderCart();
+  toast('Added to cart');
+});
+
+/* -----------------------
+   Checkout / Receipt / QR / PDF
+   ----------------------- */
+function genReceiptCode(){ return 'RCPT-' + Math.random().toString(36).slice(2,6).toUpperCase() + '-' + Date.now().toString().slice(-4); }
+
+async function checkoutProcess(printAfter=false, openPreview=false){
+  if(cart.length === 0){ await appAlert('Cart is empty'); return; }
+
+  const cust = $('posCustomer').value.trim() || 'Walk-in';
+  const subtotal = cart.reduce((s,c)=>s + c.qty*c.price, 0);
+  const tax = applyTax ? +(subtotal * taxRate).toFixed(2) : 0;
+  const grandTotal = +(subtotal + tax).toFixed(2);
+  const paid = Number($('amountPaid').value) || 0;
+
+  if(paid < grandTotal){ await appAlert('Amount paid is less than total'); return; }
+  const change = +(paid - grandTotal).toFixed(2);
+
+  // Deduct inventory
+  cart.forEach(c => {
+    const it = inventory.find(i => i.name === c.name);
+    if(it) it.qty -= c.qty;
+  });
+  inventory = inventory.filter(i=>i.qty>0);
+
+  // Update cash at hand
+  cashAtHand += grandTotal;
+  renderBalance();
+
+  // save sale
+  const receiptCode = genReceiptCode();
+  const sale = {
+    receiptCode,
+    customer: cust,
+    items: JSON.parse(JSON.stringify(cart)),
+    subtotal, tax, total: grandTotal,
+    paid, change,
+    date: new Date().toLocaleString()
+  };
+  sales.push(sale);
+  saveAll();
+
+  // update UI
+  renderInventory();
+  renderCart();
+  $('posCustomer').value=''; $('amountPaid').value='';
+
+  // create receipt HTML
+  const receiptHtml = buildReceiptHtml(sale);
+  ticketInner.innerHTML = receiptHtml;
+
+  // Generate QR inside receipt preview
+  const qrEl = document.getElementById('qrBox');
+  if (qrEl) qrEl.innerHTML = '';
+  try {
+    new QRCode(qrEl, { text: JSON.stringify({code: sale.receiptCode, total: sale.total, date: sale.date}), width: 120, height: 120 });
+  } catch(e){ /* ignore if QR lib missing */ }
+
+  receiptPreview.style.display = 'block';
+  receiptPreview.setAttribute('aria-hidden','false');
+
+  // PDF via jsPDF
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:[300,700]});
+    doc.setFont('helvetica','normal');
+    let y = 24;
+    doc.setFontSize(12);
+    doc.text(storeName, 20, y); y+=16;
+    doc.setFontSize(10);
+    doc.text(`Receipt: ${sale.receiptCode}`,20,y); y+=12;
+    doc.text(`Customer: ${cust}`,20,y); y+=12;
+    doc.text(`Date: ${sale.date}`,20,y); y+=12;
+    doc.text('------------------------------',20,y); y+=12;
+    sale.items.forEach(it=>{
+      doc.text(`${it.name} x${it.qty}  ₦${formatNumber(it.qty*it.price)}`,20,y); y+=12;
+    });
+    doc.text('------------------------------',20,y); y+=12;
+    doc.text(`Subtotal: ₦${formatNumber(subtotal)}`,20,y); y+=12;
+    if(applyTax){ doc.text(`Tax (${(taxRate*100).toFixed(2)}%): ₦${formatNumber(tax)}`,20,y); y+=12; }
+    doc.text(`Total: ₦${formatNumber(grandTotal)}`,20,y); y+=12;
+    doc.text(`Paid: ₦${formatNumber(paid)}`,20,y); y+=12;
+    doc.text(`Change: ₦${formatNumber(change)}`,20,y); y+=18;
+
+    // add QR if present
+    try{
+      const canvas = qrEl ? qrEl.querySelector('canvas') : null;
+      if(canvas){
+        const img = canvas.toDataURL('image/png');
+        doc.addImage(img, 'PNG', 90, y, 120, 120);
+        y += 130;
+      }
+    }catch(e){}
+    doc.text('*** Thank you ***', 90, y);
+    const filename = `${storeName.replace(/\s+/g,'_')}_receipt_${sale.receiptCode}.pdf`;
+    doc.save(filename);
+    if(openPreview){ const url = doc.output('dataurlstring'); window.open(url,'_blank'); }
+  } catch(e){
+    // ignore PDF errors
+  }
+
+  if(printAfter){
+    printTicket(receiptHtml);
+  }
+
+  // clear cart
+  cart = [];
+  renderCart();
+}
+
+function buildReceiptHtml(sale){
+  const lines = sale.items.map(it => `<div style="display:flex;justify-content:space-between"><span>${escapeHtml(it.name)} x${it.qty}</span><strong>₦${formatNumber(it.qty*it.price)}</strong></div>`).join('');
+  return `
+    <h4 style="margin:6px 0;text-align:center">${escapeHtml(storeName)}</h4>
+    <div style="text-align:center;font-size:12px">Receipt: <strong>${escapeHtml(sale.receiptCode)}</strong></div>
+    <div style="font-size:12px;margin-bottom:8px;text-align:center">${escapeHtml(sale.date)}</div>
+    <div style="font-size:13px">${lines}</div>
+    <div class="line"></div>
+    <div style="display:flex;justify-content:space-between"><small>Subtotal</small><small>₦${formatNumber(sale.subtotal)}</small></div>
+    ${ applyTax ? `<div style="display:flex;justify-content:space-between"><small>Tax (${(taxRate*100).toFixed(2)}%)</small><small>₦${formatNumber(sale.tax)}</small></div>` : '' }
+    <div style="display:flex;justify-content:space-between;margin-top:4px"><strong>Total</strong><strong>₦${formatNumber(sale.total)}</strong></div>
+    <div style="display:flex;justify-content:space-between"><small>Paid</small><small>₦${formatNumber(sale.paid)}</small></div>
+    <div style="display:flex;justify-content:space-between"><small>Change</small><small>₦${formatNumber(sale.change)}</small></div>
+    <div id="qrBox" style="display:flex;justify-content:center;margin-top:8px"></div>
+    <div style="margin-top:8px;text-align:center;font-size:12px">*** Thank you ***</div>
+  `;
+}
+
+function printTicket(html){
+  const w = window.open('', '_blank', 'width=320,height=700');
+  const style = `<style>body{font-family:monospace;padding:10px;} .line{border-top:1px dashed #ccc;margin:8px 0}</style>`;
+  w.document.write(`<html><head><title>Receipt</title>${style}</head><body>${html}</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.print(); }, 500);
+}
+
+/* Buttons mapping */
+$('checkoutBtn').addEventListener('click', ()=>checkoutProcess(true, true));
+$('previewPdfBtn').addEventListener('click', ()=>checkoutProcess(false, true));
+$('printBtn').addEventListener('click', ()=>checkoutProcess(true, false));
+
+$('downloadReceiptBtn').addEventListener('click', ()=>{
+  if(sales.length===0){ appAlert('No receipts yet'); return; }
+  const last = sales[sales.length-1];
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:[300,700]});
+    let y=20; doc.setFontSize(12); doc.text(storeName,20,y); y+=16;
+    doc.setFontSize(10); doc.text(`Receipt: ${last.receiptCode}`,20,y); y+=12;
+    doc.text(`Customer: ${last.customer}`,20,y); y+=12;
+    doc.text(`Date: ${last.date}`,20,y); y+=12;
+    doc.text('------------------',20,y); y+=12;
+    last.items.forEach(it=>{ doc.text(`${it.name} x${it.qty}  ₦${formatNumber(it.qty*it.price)}`,20,y); y+=12; });
+    doc.text('------------------',20,y); y+=12;
+    doc.text(`Subtotal: ₦${formatNumber(last.subtotal)}`,20,y); y+=12;
+    if(last.tax) { doc.text(`Tax (${(taxRate*100).toFixed(2)}%): ₦${formatNumber(last.tax)}`,20,y); y+=12; }
+    doc.text(`Total: ₦${formatNumber(last.total)}`,20,y); y+=12;
+    doc.text(`Paid: ₦${formatNumber(last.paid)}`,20,y); y+=12;
+    doc.text(`Change: ₦${formatNumber(last.change)}`,20,y);
+    doc.save(`receipt_${last.receiptCode}.pdf`);
+  }catch(e){
+    appAlert('PDF generation failed');
+  }
+});
+
+$('reprintBtn').addEventListener('click', ()=>{
+  if(sales.length===0){ appAlert('No receipts yet'); return; }
+  const last = sales[sales.length-1];
+  const html = buildReceiptHtml(last);
+  printTicket(html);
+});
+
+$('closeReceiptPreview').addEventListener('click', ()=>{
+  receiptPreview.style.display = 'none';
+  receiptPreview.setAttribute('aria-hidden','true');
+});
+
+/* -----------------------
+   Menu actions & settings
+   ----------------------- */
+hamburgerBtn.addEventListener('click', ()=> {
+  const show = !hamburgerMenu.classList.contains('show');
+  hamburgerMenu.classList.toggle('show', show);
+  hamburgerMenu.setAttribute('aria-hidden', show ? 'false' : 'true');
+});
+
+$('resetSalesBtn').addEventListener('click', async ()=>{
+  const conf = await appConfirm('Reset ALL sales records?');
+  if(!conf.ok) return;
+  sales = [];
+  saveAll();
+  toast('Sales reset');
+});
+
+$('todaySalesBtn').addEventListener('click', ()=> showDailyReport(false));
+$('detailedSalesBtn').addEventListener('click', ()=> showDailyReport(true));
+
+$('settingsBtn').addEventListener('click', async ()=>{
+  const ask = await appModal({
+    title:'Settings',
+    html:`<div class="muted">Change store name, password & tax.</div>`,
+    inputs:[
+      {label:'Store name', value:storeName, name:'store'},
+      {label:'New password', value:password, name:'pass'},
+      {label:'Tax rate (%)', value:(taxRate*100).toFixed(2), name:'tax'},
+      {label:'Apply tax', type:'checkbox', name:'apply', value:applyTax}
+    ],
+    okText:'Save', cancelText:'Cancel', showCancel:true
+  });
+  if(!ask.ok) return;
+  storeName = ask.store?.trim() || storeName;
+  password = ask.pass || password;
+  const tr = Number(ask.tax);
+  if(isFinite(tr) && tr>=0){ taxRate = tr/100; }
+  applyTax = !!ask.apply;
+  $('storeTitle').innerText = storeName;
+  saveAll();
+  renderCart();
+  toast('Settings updated');
+});
+
+$('chartsBtn').addEventListener('click', ()=>{
+  chartsPanel.style.display = chartsPanel.style.display==='none' ? 'block' : 'none';
+});
+
+$('resetSystemBtn').addEventListener('click', async ()=>{
+  const conf = await appConfirm('Reset EVERYTHING (inventory, sales, settings)?');
+  if(!conf.ok) return;
+  localStorage.clear();
+  location.reload();
+});
+
+/* Theme */
+$('themeBtn').addEventListener('click', ()=>{
+  document.body.classList.remove(theme);
+  theme = theme==='neon' ? 'light' : theme==='light' ? 'dark' : 'neon';
+  document.body.classList.add(theme);
+  updateModeLabel();
+  saveAll();
+});
+
+/* -----------------------
+   Balance edit (password protected)
+   ----------------------- */
+$('editBalanceBtn').addEventListener('click', async ()=>{
+  const p = await appPrompt('Enter password to update balance', {password:true});
+  if(!p.ok) return;
+  if(p.in_ !== password){ await appAlert('Wrong password'); return; }
+  const v = await appPrompt('New amount at hand (₦):', {value: cashAtHand});
+  if(!v.ok) return;
+  const num = Number(v.in_);
+  if(!isFinite(num)){ await appAlert('Invalid amount'); return; }
+  cashAtHand = num;
+  renderBalance();
+  saveAll();
+  toast('Balance updated');
+});
+
+/* -----------------------
+   Sales report
+   ----------------------- */
+function sameDay(d1,d2){
+  const a = new Date(d1), b = new Date(d2);
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+async function showDailyReport(detailed=false){
+  const now = new Date();
+  const todaySales = sales.filter(s => sameDay(s.date, now));
+  const total = todaySales.reduce((t,s)=>t+s.total,0);
+  if(!detailed){ await appAlert(`Today's total: ₦${formatNumber(total)}`); return; }
+  let html = `<div><strong>Total:</strong> ₦${formatNumber(total)}</div><div class="line" style="height:1px;background:rgba(255,255,255,.06);margin:.5rem 0"></div>`;
+  if(todaySales.length===0) html += `<div class="muted">No sales today</div>`;
+  todaySales.forEach((s,i)=>{
+    html += `<div style="margin-bottom:.5rem">
+      <div><span class="tag">#${i+1}</span> <strong>${escapeHtml(s.receiptCode)}</strong> — ${escapeHtml(s.customer)} — <small>${escapeHtml(s.date)}</small></div>
+      ${s.items.map(it=>`<div style="display:flex;justify-content:space-between"><span>${escapeHtml(it.name)} x${it.qty}</span><span>₦${formatNumber(it.qty*it.price)}</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between"><small>Subtotal</small><small>₦${formatNumber(s.subtotal)}</small></div>
+      <div style="display:flex;justify-content:space-between"><small>Tax</small><small>₦${formatNumber(s.tax)}</small></div>
+      <div style="display:flex;justify-content:space-between"><strong>Total</strong><strong>₦${formatNumber(s.total)}</strong></div>
+    </div>`;
+  });
+  await appModal({title:"Today's Sales (Detailed)", html, showCancel:false, okText:'Close'});
+}
+
+/* -----------------------
+   Charts (attempt, safe-guarded)
+   ----------------------- */
+let inventoryChart, salesChart;
+function buildCharts(){
+  try{
+    const invCtx = document.getElementById('inventoryChart').getContext('2d');
+    const labels = inventory.map(i=>i.name);
+    const qtys = inventory.map(i=>i.qty);
+    if(inventoryChart) inventoryChart.destroy();
+    inventoryChart = new Chart(invCtx, {
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Stock Qty', data:qtys }]},
+      options:{ responsive:true, plugins:{legend:{display:false}} }
+    });
+
+    const sCtx = document.getElementById('salesChart').getContext('2d');
+    const map = {};
+    sales.forEach(s=>{
+      const d = new Date(s.date).toISOString().slice(0,10);
+      map[d] = (map[d]||0) + s.total;
+    });
+    const sLabels = Object.keys(map).sort();
+    const sData = sLabels.map(k=>map[k]);
+    if(salesChart) salesChart.destroy();
+    salesChart = new Chart(sCtx, {
+      type:'line',
+      data:{ labels:sLabels, datasets:[{ label:'Daily Sales (₦)', data:sData, tension:.3 }]},
+      options:{ responsive:true }
+    });
+  }catch(e){
+    // ignore chart failures silently
+  }
+}
+
+/* -----------------------
+   Initial render
+   ----------------------- */
+renderInventory();
+renderCart();
+buildCharts();
+</script>
+</body>
+</html>
