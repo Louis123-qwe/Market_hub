@@ -554,7 +554,7 @@ async function checkoutProcess(printAfter=false, openPreview=false){
     items: JSON.parse(JSON.stringify(cart)),
     subtotal, tax, total: grandTotal,
     paid, change,
-    date: new Date().toLocaleString()
+    date: new Date().toISOString()
   };
   sales.push(sale);
   saveAll();
